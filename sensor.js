@@ -18,6 +18,7 @@ const RFID_TAGS = [
 
 let doorState = "closed"; // "open" | "closed" (kondisi stepper/relay)
 let moving = false;
+let telemetryTimer = null;
 
 const client = mqtt.connect(BROKER_URL, { connectTimeout: 10_000, reconnectPeriod: 2_000 });
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -67,21 +68,23 @@ client.on("connect", () => {
   publishActuator("boot");
 
   // Setiap 5 detik: tag RFID terbaca (atau tidak ada) + data OBD-II
-  setInterval(() => {
-    const tagDetected = Math.random() < 0.6;
-    const payload = {
-      deviceId: DEVICE_ID,
-      rfid: tagDetected ? { tagId: RFID_TAGS[rand(0, RFID_TAGS.length - 1)], rssi: rand(-70, -40) } : null,
-      obd: readObd(),
-      doorState,
-      timestamp: new Date().toISOString(),
-    };
-    client.publish(TOPIC_TELEMETRY, JSON.stringify(payload), { qos: 0 }, (err) => {
-      if (err) console.error("❌ Publish error:", err.message);
-      else console.log("📤 Telemetry:", JSON.stringify(payload));
-    });
-  }, 5000);
-});
+  if (telemetryTimer) clearInterval(telemetryTimer);
+
+  telemetryTimer = setInterval(() => {
+      const tagDetected = Math.random() < 0.6;
+      const payload = {
+        deviceId: DEVICE_ID,
+        rfid: tagDetected ? { tagId: RFID_TAGS[rand(0, RFID_TAGS.length - 1)], rssi: rand(-70, -40) } : null,
+        obd: readObd(),
+        doorState,
+        timestamp: new Date().toISOString(),
+      };
+      client.publish(TOPIC_TELEMETRY, JSON.stringify(payload), { qos: 0 }, (err) => {
+        if (err) console.error("❌ Publish error:", err.message);
+        else console.log("📤 Telemetry:", JSON.stringify(payload));
+      });
+    }, 5000);
+  });
 
 // Perintah dari Gateway -> jalankan aktuator
 client.on("message", (topic, message) => {
